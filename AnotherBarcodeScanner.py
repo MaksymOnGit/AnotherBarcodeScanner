@@ -5,6 +5,9 @@ from os.path import exists
 from numpy.lib.function_base import bartlett
 import requests
 import zipfile
+from threading import Thread, Lock
+from queue import Queue
+import concurrent.futures
 def prepareDataset():
     file_name = "1d_barcode_hough.zip"
     if not exists(file_name):
@@ -59,7 +62,6 @@ def decodeBarcode(bars):
         bars = np.flip(bars)
     bars = np.array_split(bars, 12)
     
-    #print([sum(b) for b in bars])
     if np.any([sum(b) != 7 for b in bars]):
         return
 
@@ -99,68 +101,80 @@ def readBarcodeLine(line):
 
     if len(bars) < 59:
         return
-    #for i in range(len(bars)-59+3):
-    #    arr = bars[i:i+3]
-    #    np.all(arr == arr[0])
 
     for i in range(0, len(bars) - 59, 2):
         bars_window = bars[0+i:59+i]
         barcodeWidth = sum(bars_window)
         averageBarWidth = barcodeWidth / 95
     
-
-        #np.array_split(bars[3:27], 6) / np.array([sum(b) / 7 for b in np.array_split(bars[3:27], 6)])
-        #bars = np.int0(np.concatenate((
-        #    bars[:3] / (sum(bars[:3]) / 3), 
-        #    #sum(b) / 7 for b in np.array_split(bars[3:28], 6)
-        #    bars[3:28] / (sum(bars[3:28]) / 7), 
-        #    bars[28:31] / (sum(bars[28:31]) / 3), 
-        #    bars[31:-3] / (sum(bars[31:-3]) / 7), 
-        #    bars[-3:] / (sum(bars[-3:]) / 3))))
         bars_window = np.int0(np.round(bars_window / averageBarWidth))
         barcode = decodeBarcode(bars_window)
         if barcode:
             return barcode
     return None
 
-def findBarcode(I, sobel_ksize, blur_ksize, thresh, scale, angle, morfRectH, morfRectW, erosionIterations, dilationIterations):
+def contourDistanceTo(contour, center):
+    M = cv2.moments(contour)
+    center_X = int(M["m10"] / M["m00"])
+    center_Y = int(M["m01"] / M["m00"])
+    contour_center = (center_X, center_Y)
+
+    return np.linalg.norm(center-contour_center)
+
+
+def findBarcode(I, sobel_ksize, pre_blur_ksize, post_blur_ksize, thresh, scale, angle, morfRectH, morfRectW, erosionIterations, dilationIterations):
     sobel_ksize = -1 if sobel_ksize == 1 else sobel_ksize
-    blur_ksize = -1 if blur_ksize == 1 else blur_ksize
+    pre_blur_ksize = -1 if pre_blur_ksize == 1 else pre_blur_ksize
+    post_blur_ksize = -1 if post_blur_ksize == 1 else post_blur_ksize
 
     layers = []
     I_original = I
     layers.append(I_original)
+
     I = cv2.resize(I_original, (int(I_original.shape[1] * scale / 100), int(I_original.shape[0] * scale / 100)))
     layers.append(I)
+
     I = rotate_image(I, angle)
     layers.append(I)
+
+    if pre_blur_ksize != 0:
+        I = cv2.GaussianBlur(I, (pre_blur_ksize, pre_blur_ksize), 0)
+    #I = cv2.fastNlMeansDenoisingColored(I,None,10,10,7,21)
+    layers.append(I)
+
     I = cv2.cvtColor(I, cv2.COLOR_BGR2GRAY)
     layers.append(I)
-    Ix = cv2.Sobel(I, cv2.CV_64F, 1, 0, ksize=sobel_ksize)
-    layers.append(Ix)
-    Iy = cv2.Sobel(I, cv2.CV_64F, 0, 1, ksize=sobel_ksize)
-    layers.append(Iy)
-    I = Ix-Iy
+
+    I = cv2.Laplacian(I, cv2.CV_16U, ksize=9)
     layers.append(I)
-    I = cv2.convertScaleAbs(I)
+
+    if post_blur_ksize != 0:
+        I = cv2.GaussianBlur(I, (post_blur_ksize, post_blur_ksize), 0)
     layers.append(I)
-    if blur_ksize != 0:
-        I = cv2.blur(I, (blur_ksize, blur_ksize))
-        layers.append(I)
-    _,I = cv2.threshold(I, thresh, 255, cv2.THRESH_BINARY)
+
+    _,I = cv2.threshold(I, 65535-10000, 65535, cv2.THRESH_BINARY)
     layers.append(I)
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (morfRectH, morfRectW))
+
+    I = np.uint8(I)
+    layers.append(I)
+
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (21, 7))
     I = cv2.morphologyEx(I, cv2.MORPH_CLOSE, kernel)
     layers.append(I)
+
     I = cv2.erode(I, None, iterations = erosionIterations)
     layers.append(I)
+
     I = cv2.dilate(I, None, iterations = dilationIterations)
+    layers.append(I)
+
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (morfRectH, morfRectW))
+    I = cv2.morphologyEx(I, cv2.MORPH_CLOSE, kernel)
     layers.append(I)
 
     contours, _ = cv2.findContours(I, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     contours = sorted(contours, key = cv2.contourArea, reverse = True)
-  
-    image_center = tuple(np.array(I_original.shape[1::-1]) / 2)
+    image_center = tuple(np.int32(np.array(I_original.shape[1::-1]) / 2))
 
     boxes = []
     for contour in contours:
@@ -170,13 +184,28 @@ def findBarcode(I, sobel_ksize, blur_ksize, thresh, scale, angle, morfRectH, mor
         box = rotate_boundary(image_center, box, angle)
         box = np.int0(box)
         boxes.append(box)
-
     
+    #if len(boxes) > 1:
+    #    distances = []
+    #    for contour in boxes[:3]:
+    #        # find center of each contour
+    #        M = cv2.moments(contour)
+    #        center_X = int(M["m10"] / M["m00"])
+    #        center_Y = int(M["m01"] / M["m00"])
+    #        contour_center = (center_X, center_Y)
+    
+    #        # calculate distance to image_center
+    #        distance_to_center = np.linalg.norm(np.array(image_center) - np.array(contour_center))
+    
+    #        # save to a list of dictionaries
+    #        distances.append(distance_to_center)
+
+    #    boxes = [x for _,x in sorted(zip(distances,boxes[:3]))]
+
     I_visualizer = I_original.copy()
     if len(boxes) > 0:
         cv2.drawContours(I_visualizer, boxes[1:], -1, (0,255,0), 3)
         cv2.drawContours(I_visualizer, [boxes[0]], -1, (0,0,255), 3)
-
     layers.append(I_visualizer)
 
     return boxes, layers
@@ -184,9 +213,10 @@ def findBarcode(I, sobel_ksize, blur_ksize, thresh, scale, angle, morfRectH, mor
 def extractBarcode(I, box):
     I_barcode = four_point_transform(I, np.float32(box))
     I_barcode = cv2.rotate(I_barcode, cv2.ROTATE_90_COUNTERCLOCKWISE) if I_barcode.shape[0] > I_barcode.shape[1] else I_barcode
+    #I_barcode = cv2.fastNlMeansDenoisingColored(I_barcode,None,10,10,7,21)
     I_barcode = cv2.cvtColor(I_barcode, cv2.COLOR_BGR2GRAY)
     #_,I_barcode = cv2.threshold(I_barcode, 125, 255, cv2.THRESH_BINARY)
-    I_barcode = cv2.adaptiveThreshold(I_barcode,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY,9,2)
+    I_barcode = cv2.adaptiveThreshold(I_barcode,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY,15,2)
     return I_barcode
 
 def readBarcode(I_barcode):
@@ -198,12 +228,21 @@ def readBarcode(I_barcode):
             return barcode_value, I_barcode
     return None, None
 
-def calculate(x):
-    
-    image = cv2.getTrackbarPos('image','3')
-    layer = cv2.getTrackbarPos('layer','3')
+def foo(image, sobel_ksize, pre_blur_ksize, post_blur_ksize, thresh, scale, angle, morfRectH, morfRectW, erosionIterations, dilationIterations):
+    print(image)
+    I_original = cv2.imread(image)
+    boxes, layers = findBarcode(I_original, sobel_ksize, pre_blur_ksize, post_blur_ksize, thresh, scale, angle, morfRectH, morfRectW, erosionIterations, dilationIterations)
+    if len(boxes) > 0:
+        I_barcode = extractBarcode(I_original, boxes[0])
+        barcode, I_barcode = readBarcode(I_barcode)
+        if barcode:
+            print(barcode)
+            return barcode
+
+def benchmark(x):
     sobel_ksize = cv2.getTrackbarPos('sobel_ksize','3')
-    blur_ksize = cv2.getTrackbarPos('blur_ksize','3')
+    pre_blur_ksize = cv2.getTrackbarPos('pre_blur_ksize','3')
+    post_blur_ksize = cv2.getTrackbarPos('post_blur_ksize','3')
     thresh = cv2.getTrackbarPos('thresh','3')
     scale = cv2.getTrackbarPos('scale','3')
     angle = cv2.getTrackbarPos('angle','3')
@@ -213,14 +252,39 @@ def calculate(x):
     dilationIterations = cv2.getTrackbarPos('dilationIterations','3')
 
     images = glob.glob("1d_barcode_hough\\Original\\*.jpgbarcodeOrig.png")
-    I_original = cv2.imread(images[image])
-    barcodes = []
-    #for image in images:
-    #    try:
-    #I_original = cv2.imread(image)
 
-    boxes, layers = findBarcode(I_original, sobel_ksize, blur_ksize, thresh, scale, angle, morfRectH, morfRectW, erosionIterations, dilationIterations)
-    cv2.imshow("3", layers[layer if layer < len(layers) else len(layers) - 1])
+    barcodes = np.array([])
+
+    with concurrent.futures.ThreadPoolExecutor(8) as executor:
+        futures = [executor.submit(foo, image, sobel_ksize, pre_blur_ksize, post_blur_ksize, thresh, scale, angle, morfRectH, morfRectW, erosionIterations, dilationIterations) for image in images]
+        barcodes = np.array([f.result() for f in futures])
+
+    count = len(barcodes)
+    succ = np.count_nonzero(barcodes)
+    print(f'{succ}/{count} ({round(succ/count*100, 2)}%)')
+
+def calculate(x):
+    
+    image = cv2.getTrackbarPos('image','3')
+    layer = cv2.getTrackbarPos('layer','3')
+    sobel_ksize = cv2.getTrackbarPos('sobel_ksize','3')
+    pre_blur_ksize = cv2.getTrackbarPos('pre_blur_ksize','3')
+    post_blur_ksize = cv2.getTrackbarPos('post_blur_ksize','3')
+    thresh = cv2.getTrackbarPos('thresh','3')
+    scale = cv2.getTrackbarPos('scale','3')
+    angle = cv2.getTrackbarPos('angle','3')
+    morfRectH = cv2.getTrackbarPos('morfRectH','3')
+    morfRectW = cv2.getTrackbarPos('morfRectW','3')
+    erosionIterations = cv2.getTrackbarPos('erosionIterations','3')
+    dilationIterations = cv2.getTrackbarPos('dilationIterations','3')
+
+    images = glob.glob("1d_barcode_hough\\Original\\*.jpgbarcodeOrig.png")
+
+    I_original = cv2.imread(images[image])
+    
+
+    boxes, layers = findBarcode(I_original, sobel_ksize, pre_blur_ksize, post_blur_ksize, thresh, scale, angle, morfRectH, morfRectW, erosionIterations, dilationIterations)
+    cv2.imshow("5", layers[layer if layer < len(layers) else len(layers) - 1])
     
     if len(boxes) > 0:
         I_barcode = extractBarcode(I_original, boxes[0])
@@ -230,31 +294,26 @@ def calculate(x):
         if barcode:
             cv2.imshow("4", I_barcode)
             print(barcode)
-            barcodes.append(barcode)
-        #except:
-        #    None
-
-    #img_count = len(images)
-    #success_count = len(barcodes)
-    #print(f'{img_count}/{success_count}')
 
 
 
 
 prepareDataset()
-cv2.namedWindow('3', cv2.WINDOW_NORMAL)
+cv2.namedWindow('3')
 #cv2.resizeWindow('3', 1920, 1080)
 cv2.createTrackbar("image", "3", 0,364, calculate)
 cv2.createTrackbar("layer", "3", 13,13, calculate)
 cv2.createTrackbar("scale", "3", 100,100, calculate)
 cv2.createTrackbar("angle", "3", 0,360, calculate)
 cv2.createTrackbar("sobel_ksize", "3", 1, 20, calculate)
-cv2.createTrackbar("blur_ksize", "3", 9, 20, calculate)
+cv2.createTrackbar("pre_blur_ksize", "3", 9, 20, calculate)
+cv2.createTrackbar("post_blur_ksize", "3", 0, 20, calculate)
 cv2.createTrackbar("thresh", "3", 225,255, calculate)
 cv2.createTrackbar("morfRectH", "3", 21,100, calculate)
 cv2.createTrackbar("morfRectW", "3", 7,100, calculate)
-cv2.createTrackbar("erosionIterations", "3", 4,100, calculate)
-cv2.createTrackbar("dilationIterations", "3", 6,100, calculate)
+cv2.createTrackbar("erosionIterations", "3", 14,100, calculate)
+cv2.createTrackbar("dilationIterations", "3", 16,100, calculate)
+cv2.createTrackbar("benchmark", "3", 0,1, benchmark)
 #I = cv2.Canny(I, 50, 150)
 #cv2.imshow("3", I)
 
