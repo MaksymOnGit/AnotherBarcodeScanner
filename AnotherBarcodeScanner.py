@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+import math
 import glob
 from os.path import exists
 from numpy.lib.function_base import bartlett
@@ -139,7 +140,6 @@ def findBarcode(I, sobel_ksize, pre_blur_ksize, post_blur_ksize, thresh, scale, 
 
     if pre_blur_ksize != 0:
         I = cv2.GaussianBlur(I, (pre_blur_ksize, pre_blur_ksize), 0)
-    #I = cv2.fastNlMeansDenoisingColored(I,None,10,10,7,21)
     layers.append(I)
 
     I = cv2.cvtColor(I, cv2.COLOR_BGR2GRAY)
@@ -184,23 +184,7 @@ def findBarcode(I, sobel_ksize, pre_blur_ksize, post_blur_ksize, thresh, scale, 
         box = rotate_boundary(image_center, box, angle)
         box = np.int0(box)
         boxes.append(box)
-    
-    #if len(boxes) > 1:
-    #    distances = []
-    #    for contour in boxes[:3]:
-    #        # find center of each contour
-    #        M = cv2.moments(contour)
-    #        center_X = int(M["m10"] / M["m00"])
-    #        center_Y = int(M["m01"] / M["m00"])
-    #        contour_center = (center_X, center_Y)
-    
-    #        # calculate distance to image_center
-    #        distance_to_center = np.linalg.norm(np.array(image_center) - np.array(contour_center))
-    
-    #        # save to a list of dictionaries
-    #        distances.append(distance_to_center)
-
-    #    boxes = [x for _,x in sorted(zip(distances,boxes[:3]))]
+   
 
     I_visualizer = I_original.copy()
     if len(boxes) > 0:
@@ -240,16 +224,16 @@ def foo(image, sobel_ksize, pre_blur_ksize, post_blur_ksize, thresh, scale, angl
             return barcode
 
 def benchmark(x):
-    sobel_ksize = cv2.getTrackbarPos('sobel_ksize','3')
-    pre_blur_ksize = cv2.getTrackbarPos('pre_blur_ksize','3')
-    post_blur_ksize = cv2.getTrackbarPos('post_blur_ksize','3')
-    thresh = cv2.getTrackbarPos('thresh','3')
-    scale = cv2.getTrackbarPos('scale','3')
-    angle = cv2.getTrackbarPos('angle','3')
-    morfRectH = cv2.getTrackbarPos('morfRectH','3')
-    morfRectW = cv2.getTrackbarPos('morfRectW','3')
-    erosionIterations = cv2.getTrackbarPos('erosionIterations','3')
-    dilationIterations = cv2.getTrackbarPos('dilationIterations','3')
+    sobel_ksize = cv2.getTrackbarPos('sobel_ksize',"options")
+    pre_blur_ksize = cv2.getTrackbarPos('pre_blur_ksize',"options")
+    post_blur_ksize = cv2.getTrackbarPos('post_blur_ksize',"options")
+    thresh = cv2.getTrackbarPos('thresh',"options")
+    scale = cv2.getTrackbarPos('scale',"options")
+    angle = cv2.getTrackbarPos('angle',"options")
+    morfRectH = cv2.getTrackbarPos('morfRectH',"options")
+    morfRectW = cv2.getTrackbarPos('morfRectW',"options")
+    erosionIterations = cv2.getTrackbarPos('erosionIterations',"options")
+    dilationIterations = cv2.getTrackbarPos('dilationIterations',"options")
 
     images = glob.glob("1d_barcode_hough\\Original\\*.jpgbarcodeOrig.png")
 
@@ -265,18 +249,18 @@ def benchmark(x):
 
 def calculate(x):
     
-    image = cv2.getTrackbarPos('image','3')
-    layer = cv2.getTrackbarPos('layer','3')
-    sobel_ksize = cv2.getTrackbarPos('sobel_ksize','3')
-    pre_blur_ksize = cv2.getTrackbarPos('pre_blur_ksize','3')
-    post_blur_ksize = cv2.getTrackbarPos('post_blur_ksize','3')
-    thresh = cv2.getTrackbarPos('thresh','3')
-    scale = cv2.getTrackbarPos('scale','3')
-    angle = cv2.getTrackbarPos('angle','3')
-    morfRectH = cv2.getTrackbarPos('morfRectH','3')
-    morfRectW = cv2.getTrackbarPos('morfRectW','3')
-    erosionIterations = cv2.getTrackbarPos('erosionIterations','3')
-    dilationIterations = cv2.getTrackbarPos('dilationIterations','3')
+    image = cv2.getTrackbarPos('image',"options")
+    layer = cv2.getTrackbarPos('layer',"options")
+    sobel_ksize = cv2.getTrackbarPos('sobel_ksize',"options")
+    pre_blur_ksize = cv2.getTrackbarPos('pre_blur_ksize',"options")
+    post_blur_ksize = cv2.getTrackbarPos('post_blur_ksize',"options")
+    thresh = cv2.getTrackbarPos('thresh',"options")
+    scale = cv2.getTrackbarPos('scale',"options")
+    angle = cv2.getTrackbarPos('angle',"options")
+    morfRectH = cv2.getTrackbarPos('morfRectH',"options")
+    morfRectW = cv2.getTrackbarPos('morfRectW',"options")
+    erosionIterations = cv2.getTrackbarPos('erosionIterations',"options")
+    dilationIterations = cv2.getTrackbarPos('dilationIterations',"options")
 
     images = glob.glob("1d_barcode_hough\\Original\\*.jpgbarcodeOrig.png")
 
@@ -297,28 +281,198 @@ def calculate(x):
 
 
 
+def barcode():
+    prepareDataset()
+    cv2.namedWindow("options", cv2.WINDOW_GUI_EXPANDED)
+    cv2.resizeWindow("options", 1800, 400)
+    cv2.createTrackbar("image", "options", 0,364, calculate)
+    cv2.createTrackbar("layer", "options", 13,13, calculate)
+    cv2.createTrackbar("scale", "options", 100,100, calculate)
+    cv2.createTrackbar("angle", "options", 0,360, calculate)
+    cv2.createTrackbar("sobel_ksize", "options", 1, 20, calculate)
+    cv2.createTrackbar("pre_blur_ksize", "options", 9, 20, calculate)
+    cv2.createTrackbar("post_blur_ksize", "options", 0, 20, calculate)
+    cv2.createTrackbar("thresh", "options", 225,255, calculate)
+    cv2.createTrackbar("morfRectH", "options", 21,100, calculate)
+    cv2.createTrackbar("morfRectW", "options", 7,100, calculate)
+    cv2.createTrackbar("erosionIterations", "options", 14,100, calculate)
+    cv2.createTrackbar("dilationIterations", "options", 16,100, calculate)
+    cv2.createTrackbar("benchmark", "options", 0,1, benchmark)
 
-prepareDataset()
-cv2.namedWindow('3')
-#cv2.resizeWindow('3', 1920, 1080)
-cv2.createTrackbar("image", "3", 0,364, calculate)
-cv2.createTrackbar("layer", "3", 13,13, calculate)
-cv2.createTrackbar("scale", "3", 100,100, calculate)
-cv2.createTrackbar("angle", "3", 0,360, calculate)
-cv2.createTrackbar("sobel_ksize", "3", 1, 20, calculate)
-cv2.createTrackbar("pre_blur_ksize", "3", 9, 20, calculate)
-cv2.createTrackbar("post_blur_ksize", "3", 0, 20, calculate)
-cv2.createTrackbar("thresh", "3", 225,255, calculate)
-cv2.createTrackbar("morfRectH", "3", 21,100, calculate)
-cv2.createTrackbar("morfRectW", "3", 7,100, calculate)
-cv2.createTrackbar("erosionIterations", "3", 14,100, calculate)
-cv2.createTrackbar("dilationIterations", "3", 16,100, calculate)
-cv2.createTrackbar("benchmark", "3", 0,1, benchmark)
-#I = cv2.Canny(I, 50, 150)
-#cv2.imshow("3", I)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
 
-#I = cv2.blur(I, (9,9))
-#cv2.imshow("4", I)
+def processQrcode(I, FIPs):
+    return
 
-cv2.waitKey(0)
-cv2.destroyAllWindows()
+def findQrcode(I, pre_blur_ksize, scale, angle, ksize, c, erosionIterations):
+    pre_blur_ksize = -1 if pre_blur_ksize == 1 else pre_blur_ksize
+
+    layers = []
+    I_original = I
+    layers.append(I_original)
+
+    I = cv2.resize(I_original, (int(I_original.shape[1] * scale / 100), int(I_original.shape[0] * scale / 100)))
+    layers.append(I)
+
+    I = rotate_image(I, angle)
+    layers.append(I)
+
+    if pre_blur_ksize != 0:
+        I = cv2.GaussianBlur(I, (pre_blur_ksize, pre_blur_ksize), 0)
+    layers.append(I)
+
+    I = cv2.cvtColor(I, cv2.COLOR_BGR2GRAY)
+    layers.append(I)
+    
+    I = cv2.adaptiveThreshold(I,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY,ksize,c)
+    layers.append(I)
+
+    I = 255-I
+    layers.append(I)
+    
+    # https://docs.opencv.org/master/d9/d8b/tutorial_py_contours_hierarchy.html
+    # Hierarchy Representation in OpenCV
+    # Each contour has its own information regarding what hierarchy it is, who is its child, who is its parent etc. 
+    # OpenCV represents it as an array of four values : [Next, Previous, First_Child, Parent]
+    contours, hierarchy = cv2.findContours(I, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    hierarchy = hierarchy[0]
+
+    FIPs = np.empty((0,2))
+
+    for component in zip(contours, hierarchy):
+        currentContour = component[0]
+        currentHierarchy = component[1]
+
+        if (currentHierarchy[0] < 0) and (currentHierarchy[2] < 0) and (currentHierarchy[2] < 0) and (currentHierarchy[3] > 0):
+
+            parent_idx = currentHierarchy[3]
+            parent_hier = hierarchy[parent_idx]
+
+            if (parent_hier[0] < 0) and (parent_hier[1] < 0) and (parent_hier[3] > 0):
+                area = cv2.contourArea(currentContour)
+                parea = cv2.contourArea(contours[parent_idx])
+                if abs(0.30-area/parea) < 0.08:
+                    M = cv2.moments(currentContour)
+                    approx = cv2.approxPolyDP(currentContour, 0.01 * cv2.arcLength(currentContour, True), True)
+                    x = int(M["m10"] / M["m00"])
+                    y = int(M["m01"] / M["m00"])
+                    FIPs = np.append(FIPs, np.array([[x,y]]), axis=0)
+
+    FIPs = np.int0(FIPs)
+    I_visualizer = cv2.cvtColor(I, cv2.COLOR_GRAY2BGR)
+    for fip in FIPs:
+        I_visualizer = cv2.circle(I_visualizer, fip, radius=5, color=(0, 0, 255), thickness=-1)
+    layers.append(I_visualizer)
+
+    lenFIPs = len(FIPs)
+    if lenFIPs == 3:
+        A = FIPs[0]
+        B = FIPs[1]
+        C = FIPs[2]
+        a = B-C
+        b = A-C
+        c = A-B
+        Ad = np.arccos(np.dot(b,c)/(np.linalg.norm(b) * np.linalg.norm(c)))
+        Cd = np.arccos(np.dot(b,a)/(np.linalg.norm(b) * np.linalg.norm(a)))
+        Bd = 3.141592653589793 - Ad - Cd
+        Corner_index = np.argmax(np.array([Ad, Bd, Cd]))
+        Corner = FIPs[Corner_index]
+        FIPs = np.delete(FIPs,  Corner_index, axis=0)
+        I_visualizer = cv2.circle(I_visualizer, Corner, radius=5, color=(255, 0, 0), thickness=-1)
+        I_visualizer = cv2.line(I_visualizer, Corner, FIPs[0], color=(0, 255, 0), thickness=2)
+        I_visualizer = cv2.line(I_visualizer, Corner, FIPs[1], color=(0, 255, 0), thickness=2)
+        x = FIPs[1] - Corner
+        y = FIPs[0] - Corner
+        lenx = np.linalg.norm(x)
+        leny = np.linalg.norm(y)
+        normx = x / lenx
+        normy = y / leny
+        
+        
+        #point = np.int0(Corner + normx * 0)
+        #while I[point[1],point[0]] > 0:
+        #    I[point[1],point[0]]
+
+        
+        #start = None
+        #end = None
+        #middle = None
+        #i = 0
+        #point = np.int0(Corner + normx * i)
+
+        #while I[point[1],point[0]] > 0:
+        #    point = np.int0(Corner + normx * i)
+        #    i += 1
+
+        #while I[point[1],point[0]] == 0:
+        #    point = np.int0(Corner + normx * i)
+        #    i += 1
+
+        #start = point
+
+        #while I[point[1],point[0]] > 0:
+        #    point = np.int0(Corner + normx * i)
+        #    i += 1
+
+        #end = point
+
+        #i = 0
+        #middle = np.int0((end + start) / 2)
+        #point = middle
+        #I_visualizer = cv2.circle(I_visualizer, point, radius=2, color=(255, 0, 0), thickness=-1)
+
+        #while I[point[1],point[0]] > 0:
+        #    point = np.int0(middle + normy * i)
+        #    i += 1
+
+        #middle = point
+        
+
+        #I_visualizer = cv2.line(I_visualizer, np.int0(middle), np.int0(middle + (normy * leny)), color=(0, 0, 255), thickness=2)
+
+        #asdx = lenx / 22
+        #asdy = leny / 22
+        #for i in range(-3,26):
+        #    for j in range(-3,26):
+        #        I_visualizer = cv2.circle(I_visualizer, np.int0(np.around(Corner + (i * normx * asdx) + (j * normy * asdy))), radius=2, color=(0, 0, 255), thickness=-1)
+        layers.append(I_visualizer)
+    elif lenFIPs > 3:
+        print(lenFIPs)
+
+    return layers
+
+def calculateqr(x):
+    image = cv2.getTrackbarPos('image',"options")
+    layer = cv2.getTrackbarPos('layer',"options")
+    scale = cv2.getTrackbarPos('scale',"options")
+    angle = cv2.getTrackbarPos('angle',"options")
+    pre_blur_ksize = cv2.getTrackbarPos('pre_blur_ksize',"options")
+    ksize = cv2.getTrackbarPos('ksize',"options")
+    c = cv2.getTrackbarPos('c',"options")
+    erosionIterations = cv2.getTrackbarPos('erosionIterations',"options")
+
+    images = glob.glob("QR*.*")
+
+    I_original = cv2.imread(images[image])
+
+    layers = findQrcode(I_original, pre_blur_ksize, scale, angle, ksize, c, erosionIterations)
+    cv2.imshow("5", layers[layer if layer < len(layers) else len(layers) - 1])
+
+def qrcode():
+    cv2.namedWindow("options", cv2.WINDOW_GUI_EXPANDED)
+    cv2.resizeWindow("options", 1800, 400)
+    cv2.createTrackbar("image", "options", 0,30, calculateqr)
+    cv2.createTrackbar("layer", "options", 13,13, calculateqr)
+    cv2.createTrackbar("scale", "options", 100,100, calculateqr)
+    cv2.createTrackbar("angle", "options", 0,360, calculateqr)
+    cv2.createTrackbar("pre_blur_ksize", "options", 0, 20, calculateqr)
+    cv2.createTrackbar("ksize", "options", 199, 200, calculateqr)
+    cv2.createTrackbar("c", "options", 17, 100, calculateqr)
+    cv2.createTrackbar("erosionIterations", "options", 0, 50, calculateqr)
+
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+
+qrcode()
+
