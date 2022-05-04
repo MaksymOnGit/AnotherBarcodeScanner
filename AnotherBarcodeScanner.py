@@ -338,8 +338,9 @@ def findQrcode(I, pre_blur_ksize, scale, angle, ksize, c, erosionIterations):
     contours, hierarchy = cv2.findContours(I, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     hierarchy = hierarchy[0]
 
-    FIPs = np.empty((0,2))
-
+    FIPs = []
+    
+    I_visualizer = cv2.cvtColor(I, cv2.COLOR_GRAY2BGR)
     for component in zip(contours, hierarchy):
         currentContour = component[0]
         currentHierarchy = component[1]
@@ -354,40 +355,82 @@ def findQrcode(I, pre_blur_ksize, scale, angle, ksize, c, erosionIterations):
                 parea = cv2.contourArea(contours[parent_idx])
                 if abs(0.30-area/parea) < 0.08:
                     M = cv2.moments(currentContour)
-                    approx = cv2.approxPolyDP(currentContour, 0.01 * cv2.arcLength(currentContour, True), True)
+                    #approx = cv2.approxPolyDP(currentContour, 0.01 * cv2.arcLength(currentContour, True), True)
                     x = int(M["m10"] / M["m00"])
                     y = int(M["m01"] / M["m00"])
-                    FIPs = np.append(FIPs, np.array([[x,y]]), axis=0)
+                    outerSquare = np.squeeze(cv2.approxPolyDP(contours[parent_hier[3]], 3, True), 1)
+                    innerSquare = np.squeeze(cv2.approxPolyDP(contours[parent_idx], 3, True), 1)
+                    FIPs.append([np.array([x,y]), innerSquare, outerSquare])
 
-    FIPs = np.int0(FIPs)
-    I_visualizer = cv2.cvtColor(I, cv2.COLOR_GRAY2BGR)
+                    for i in outerSquare:
+                            I_visualizer = cv2.circle(I_visualizer, i, radius=2, color=(0, 0, 255), thickness=-1)
+
+                    for i in innerSquare:
+                            I_visualizer = cv2.circle(I_visualizer, i, radius=2, color=(0, 0, 255), thickness=-1)
+
     for fip in FIPs:
-        I_visualizer = cv2.circle(I_visualizer, fip, radius=5, color=(0, 0, 255), thickness=-1)
+        I_visualizer = cv2.circle(I_visualizer, fip[0], radius=5, color=(0, 0, 255), thickness=-1)
     layers.append(I_visualizer)
 
     lenFIPs = len(FIPs)
     if lenFIPs == 3:
-        A = FIPs[0]
-        B = FIPs[1]
-        C = FIPs[2]
+        A = FIPs[0][0]
+        B = FIPs[1][0]
+        C = FIPs[2][0]
         a = B-C
         b = A-C
         c = A-B
         Ad = np.arccos(np.dot(b,c)/(np.linalg.norm(b) * np.linalg.norm(c)))
         Cd = np.arccos(np.dot(b,a)/(np.linalg.norm(b) * np.linalg.norm(a)))
-        Bd = 3.141592653589793 - Ad - Cd
-        Corner_index = np.argmax(np.array([Ad, Bd, Cd]))
-        Corner = FIPs[Corner_index]
-        FIPs = np.delete(FIPs,  Corner_index, axis=0)
+        Bd = math.pi - Ad - Cd
+        #Largest angle
+        Corner_index = max(range(3), key=[Ad, Bd, Cd].__getitem__)
+        #FIPs.insert(0, FIPs.pop(Corner_index))
+        FIPs[0], FIPs[Corner_index] = FIPs[Corner_index], FIPs[0]
+        Corner = FIPs[0][0]
         I_visualizer = cv2.circle(I_visualizer, Corner, radius=5, color=(255, 0, 0), thickness=-1)
-        I_visualizer = cv2.line(I_visualizer, Corner, FIPs[0], color=(0, 255, 0), thickness=2)
-        I_visualizer = cv2.line(I_visualizer, Corner, FIPs[1], color=(0, 255, 0), thickness=2)
-        x = FIPs[1] - Corner
-        y = FIPs[0] - Corner
-        lenx = np.linalg.norm(x)
-        leny = np.linalg.norm(y)
-        normx = x / lenx
-        normy = y / leny
+        I_visualizer = cv2.line(I_visualizer, Corner, FIPs[1][0], color=(0, 255, 0), thickness=2)
+        I_visualizer = cv2.line(I_visualizer, Corner, FIPs[2][0], color=(0, 255, 0), thickness=2)
+
+        #Center
+        A = FIPs[1][0]
+        B = FIPs[2][0]
+        Center = np.rint((A+B)/2).astype(int)
+        I_visualizer = cv2.circle(I_visualizer, Center, radius=5, color=(255, 0, 0), thickness=-1)
+
+        
+        for FIP in FIPs:
+            corners = FIP[1]
+            dists = [np.linalg.norm(x - Center) for x in corners]
+            Corner_index = min(range(len(dists)), key=dists.__getitem__)
+            dists[Corner_index], dists[0] = dists[0], dists[Corner_index]
+            corners[Corner_index], corners[0] = np.copy(corners[0]), np.copy(corners[Corner_index])
+            I_visualizer = cv2.circle(I_visualizer, corners[0], radius=2, color=(255, 0, 0), thickness=-1)
+            
+            Corner_index = max(range(len(dists)), key=dists.__getitem__)
+            corners[Corner_index], corners[1] = np.copy(corners[1]), np.copy(corners[Corner_index])
+            I_visualizer = cv2.circle(I_visualizer, corners[1], radius=2, color=(0, 255, 0), thickness=-1)
+
+            corners = FIP[2]
+            dists = [np.linalg.norm(x - Center) for x in corners]
+            Corner_index = min(range(len(dists)), key=dists.__getitem__)
+            dists[Corner_index], dists[0] = dists[0], dists[Corner_index]
+            corners[Corner_index], corners[0] = np.copy(corners[0]), np.copy(corners[Corner_index])
+            I_visualizer = cv2.circle(I_visualizer, corners[0], radius=2, color=(255, 0, 0), thickness=-1)
+            
+            Corner_index = max(range(len(dists)), key=dists.__getitem__)
+            corners[Corner_index], corners[1] = np.copy(corners[1]), np.copy(corners[Corner_index])
+            I_visualizer = cv2.circle(I_visualizer, corners[1], radius=2, color=(0, 255, 0), thickness=-1)
+
+        
+        I_visualizer = cv2.line(I_visualizer, np.int0((FIPs[0][1][0] + FIPs[0][2][0]) / 2), np.int0((FIPs[1][1][0] + FIPs[1][2][0]) / 2), color=(0, 255, 0), thickness=1)
+        I_visualizer = cv2.line(I_visualizer, np.int0((FIPs[0][1][0] + FIPs[0][2][0]) / 2), np.int0((FIPs[2][1][0] + FIPs[2][2][0]) / 2), color=(0, 255, 0), thickness=1)
+        #x = FIPs[1] - Corner
+        #y = FIPs[0] - Corner
+        #lenx = np.linalg.norm(x)
+        #leny = np.linalg.norm(y)
+        #normx = x / lenx
+        #normy = y / leny
         
         
         #point = np.int0(Corner + normx * 0)
