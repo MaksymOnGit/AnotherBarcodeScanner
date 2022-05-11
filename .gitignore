@@ -2,3 +2,4 @@
 *.png
 *.zip
 1d_barcode_hough/
+__pycache__/
