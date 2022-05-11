@@ -10,6 +10,7 @@ from threading import Thread, Lock
 from queue import Queue
 import concurrent.futures
 from QRMatrix import QRMatrixDecoder
+from pyzbar import pyzbar
 
 
 def prepareDataset():
@@ -571,23 +572,40 @@ def findQrcode(I, pre_blur_ksize, scale, angle, ksize, c, erosionIterations, xdi
 
 
         colcount = (len(yMidPoints) if len(yMidPoints) > len(xMidPoints) else len(xMidPoints)) + 14
-        result = np.zeros((colcount, colcount))
+        result = np.zeros((colcount, colcount), dtype=np.uint8)
 
         if sobelMaskRowCount == sobelMaskColCount and sobelMaskColCount == colcount:
             indices = np.where(sobelMask==255)
             I_extractCorrectedMasked = cv2.cvtColor(I_extractCorrected, cv2.COLOR_GRAY2BGR)
             I_extractCorrectedMasked[indices[0], indices[1], :] = [255, 0, 255]
+            cv2.imshow("I_extractCorrectedMasked", I_extractCorrectedMasked)
             tmpSobelMaskRows = np.append(sobelMaskRows, not sobelMaskRows[-1]) 
-            tmpSobelMaskRows = np.where(tmpSobelMaskRows[:-1] != tmpSobelMaskRows[1:])[0][::2]
+            tmpSobelMaskRows = np.where(tmpSobelMaskRows[:-1] != tmpSobelMaskRows[1:])[0]
             tmpSobelMaskCols = np.append(sobelMaskCols, not sobelMaskCols[-1]) 
-            tmpSobelMaskCols = np.where(tmpSobelMaskCols[:-1] != tmpSobelMaskCols[1:])[0][::2]
-            for ix, x in enumerate(tmpSobelMaskRows):
-                for iy, y in enumerate(tmpSobelMaskCols):
-                    result[ix, iy] = 0 if I_extractCorrected[x - 1, y - 1] == 255 else 255
-                    I_extractCorrectedVisualiser = cv2.circle(I_extractCorrectedVisualiser, [y-1, x-1], radius=1, color=(0, 255, 0), thickness=-1)
+            tmpSobelMaskCols = np.where(tmpSobelMaskCols[:-1] != tmpSobelMaskCols[1:])[0]
+            for x in range(0, len(tmpSobelMaskRows), 2):
+                for y in range(0, len(tmpSobelMaskCols), 2):
+                    prevPointX = tmpSobelMaskRows[x - 1] if x > 0 else 0
+                    prevPointY = tmpSobelMaskRows[y - 1] if y > 0 else 0
+                    pointx = prevPointX + math.ceil((tmpSobelMaskRows[x] - prevPointX) / 2)
+                    pointy = prevPointY + math.ceil((tmpSobelMaskRows[y] - prevPointY) / 2)
+                    result[int(y/2), int(x/2)] = 0 if I_extractCorrected[pointy, pointx] == 255 else 255
+                    I_extractCorrectedVisualiser = cv2.circle(I_extractCorrectedVisualiser, [pointy, pointx], radius=1, color=(0, 255, 0), thickness=-1)
+
+        #if sobelMaskRowCount == sobelMaskColCount and sobelMaskColCount == colcount:
+        #    indices = np.where(sobelMask==255)
+        #    I_extractCorrectedMasked = cv2.cvtColor(I_extractCorrected, cv2.COLOR_GRAY2BGR)
+        #    I_extractCorrectedMasked[indices[0], indices[1], :] = [255, 0, 255]
+        #    tmpSobelMaskRows = np.append(sobelMaskRows, not sobelMaskRows[-1]) 
+        #    tmpSobelMaskRows = np.where(tmpSobelMaskRows[:-1] != tmpSobelMaskRows[1:])[0][::2]
+        #    tmpSobelMaskCols = np.append(sobelMaskCols, not sobelMaskCols[-1]) 
+        #    tmpSobelMaskCols = np.where(tmpSobelMaskCols[:-1] != tmpSobelMaskCols[1:])[0][::2]
+        #    for ix, x in enumerate(tmpSobelMaskRows):
+        #        for iy, y in enumerate(tmpSobelMaskCols):
+        #            result[ix, iy] = 0 if I_extractCorrected[x - 1, y - 1] == 255 else 255
+        #            I_extractCorrectedVisualiser = cv2.circle(I_extractCorrectedVisualiser, [y-1, x-1], radius=1, color=(0, 255, 0), thickness=-1)
         
         cv2.imshow("I_extractCorrectedVisualiser", I_extractCorrectedVisualiser)
-        cv2.imshow("I_extractCorrectedMasked", I_extractCorrectedMasked)
         cv2.imshow("I_extractCorrected", I_extractCorrected)
         #asdx = I_extractCorrected.shape[1] / colcount
         #asdy = I_extractCorrected.shape[0] / colcount
@@ -618,8 +636,14 @@ def findQrcode(I, pre_blur_ksize, scale, angle, ksize, c, erosionIterations, xdi
         #cv2.imshow("I_extractCorrected", I_extractCorrected)
         layers.append(I_visualizer)
 
-        I_digitalised = cv2.copyMakeBorder(np.kron(result, np.ones((5,5))), 10, 10, 10, 10, cv2.BORDER_CONSTANT, value=(255,255,255))
-        cv2.imshow("I_digitalised", I_digitalised)
+        I_regenerated = cv2.copyMakeBorder(np.kron(result, np.ones((5,5))), 10, 10, 10, 10, cv2.BORDER_CONSTANT, value=(255,255,255))
+        I_regenerated = cv2.normalize(I_regenerated, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+        cv2.imshow("I_regenerated", I_regenerated)
+
+        result = pyzbar.decode(I_regenerated)
+       
+        if any(result):
+            print(result[0].data)
 
         #decoder = QRMatrixDecoder(np.int0(result))
         #print(decoder.decode())
