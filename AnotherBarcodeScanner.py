@@ -195,7 +195,7 @@ def calculate(x):
 def scanFolder(folder):
     if folder[:-1] != "\\":
         folder += "\\"
-    images = glob.glob(folder + '*.png') + glob.glob(folder + '*.jpg')
+    images = glob.glob(folder + '*.png') + glob.glob(folder + '*.jpg') + glob.glob(folder + '*.gif')
     from Barcode import Barcode
     from QrCode import QrCode
 
