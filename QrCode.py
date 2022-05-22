@@ -165,7 +165,7 @@ class QrCode(object):
             result = self.decode(scanningRange, offsetX, offserY)
             return True, result
         except Exception as e:
-            print(e)
+            pass
         return False, None
     def decode(self, scanningRange = 5, offsetX = 1, offserY = -1):
         if not self.qrCodeDetected:
@@ -553,8 +553,8 @@ class QrCode(object):
 
         if debugOutput is not None:
             tmpColored = cv2.cvtColor(inputImageVerticalSobel, cv2.COLOR_GRAY2BGR)
-            tmpColored = cv2.putText(tmpColored, str((colCountY / colcount) + (inputImage.shape[1] / colcount) / np.std(colSizesY)), (5, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2, 2)
-            tmpColored = cv2.putText(tmpColored, str(np.std(colSizesY)), (5, 60), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2, 2)
+            tmpColored = cv2.putText(tmpColored, str((colCountY / colcount)), (5, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2, 2)
+            tmpColored = cv2.putText(tmpColored, str((inputImage.shape[1] / colcount) / np.std(colSizesY)), (5, 60), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2, 2)
             debugOutput.append(np.copy(tmpColored))
 
         inputImageHorizontalSobel = cv2.Sobel(inputImage, cv2.CV_16S, 0, 1, ksize=1)
@@ -584,8 +584,8 @@ class QrCode(object):
 
         if debugOutput is not None:
             tmpColored = cv2.cvtColor(inputImageHorizontalSobel, cv2.COLOR_GRAY2BGR)
-            tmpColored = cv2.putText(tmpColored, str((rowCountX / colcount) + (inputImage.shape[0] / colcount) / np.std(rowSizesX)), (5, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2, 2)
-            tmpColored = cv2.putText(tmpColored, str(np.std(rowSizesX)), (5, 60), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2, 2)
+            tmpColored = cv2.putText(tmpColored, str((rowCountX / colcount)), (5, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2, 2)
+            tmpColored = cv2.putText(tmpColored, str((inputImage.shape[0] / colcount) / np.std(rowSizesX)), (5, 60), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2, 2)
             debugOutput.append(np.copy(tmpColored))
 
         colCountScore = 0

@@ -3,3 +3,5 @@
 *.zip
 1d_barcode_hough/
 __pycache__/
+!test/*.jpg
+!test/*.png

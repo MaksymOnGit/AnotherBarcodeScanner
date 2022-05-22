@@ -2,10 +2,12 @@ import cv2
 import numpy as np
 import math
 import glob
-from os.path import exists
+from os.path import exists, isdir
+from pyzbar.pyzbar import decode
 import requests
 import zipfile
 import concurrent.futures
+import sys
 
 
 def prepareDataset():
@@ -190,5 +192,42 @@ def calculate(x):
     if(barcodeVal):
         print(barcodeVal)
 
-qrcode()
+def scanFolder(folder):
+    if folder[:-1] != "\\":
+        folder += "\\"
+    images = glob.glob(folder + '*.png') + glob.glob(folder + '*.jpg')
+    from Barcode import Barcode
+    from QrCode import QrCode
 
+    for imagePath in images:
+        image = cv2.imread(imagePath)
+        qrCode = QrCode(image)
+        detectSuccess, detectResult = qrCode.tryDetect()
+        if detectSuccess and detectResult:
+            decodeSuccess, decodeResult = qrCode.tryDecode()
+            if decodeSuccess and decodeResult:
+                print(imagePath + "\t" + str(decodeResult))
+                next
+
+        barcode = Barcode(image)
+        barcodeVal = barcode.readBarcode()
+        if barcodeVal:
+            print(imagePath + "\t" + str(barcodeVal))
+            next
+
+def main():
+    args = sys.argv[1:]
+    if len(args) == 0:
+        print("No arguments were given")
+        return
+
+    if args[0] == "debug":
+        if args[1] == "bar":
+            barcode()
+        elif args[1] == "qr":
+            qrcode()
+    elif isdir(args[0]):
+        scanFolder(args[0])
+
+if __name__ == "__main__":
+    main()
