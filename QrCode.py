@@ -160,14 +160,14 @@ class QrCode(object):
         self.__finderPatterns = finderPatterns
         return True
 
-    def tryDecode(self, scanningRange = 5, offsetX = 0, offserY = 0):
+    def tryDecode(self, scanningRange = 5, offsetX = 1, offserY = -1):
         try:
             result = self.decode(scanningRange, offsetX, offserY)
             return True, result
         except Exception as e:
             print(e)
         return False, None
-    def decode(self, scanningRange = 5, offsetX = 0, offserY = 0):
+    def decode(self, scanningRange = 5, offsetX = 1, offserY = -1):
         if not self.qrCodeDetected:
             raise Exception("QR code has not been found.")
 
@@ -178,10 +178,13 @@ class QrCode(object):
         self.__transformFinderPatternsPoints(transformationMatrix)
         _, extractedQrCode = cv2.threshold(extractedQrCode, 127, 255, cv2.THRESH_BINARY)
         
+        sobelMask, sobelMaskRows, sobelMaskCols, sobelMaskRowCount, sobelMaskColCount = self.__getSobelMask(extractedQrCode)
+
+        colcount, xMidPoints, yMidPoints, midCornerPointX, midCornerPointY, midCornerPoint = self.__countDataDimensions(extractedQrCode, self.__finderPatternsTransformed)
 
         if self.__makeProcessingLayers:
             sobelLayers = []
-            sobelScore = self.__calculateSobelScore(extractedQrCode, sobelLayers)
+            sobelScore = self.__calculateSobelScore(colcount, extractedQrCode, sobelLayers)
 
             coloredExtract = cv2.cvtColor(extractedQrCode, cv2.COLOR_GRAY2BGR)
             coloredExtract = cv2.putText(coloredExtract, str(sobelScore), (5, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2, 2)
@@ -191,52 +194,7 @@ class QrCode(object):
             collage = cv2.vconcat([top, cv2.hconcat([left, right])])
             self.__dealWithProcessingLayers(collage)
 
-        sobelMask, sobelMaskRows, sobelMaskCols, sobelMaskRowCount, sobelMaskColCount = self.__getSobelMask(extractedQrCode)
 
-        midCornerPoint = (self.__finderPatternsTransformed[0][1][0] + self.__finderPatternsTransformed[0][2][0]) / 2
-        midCornerPointX = (self.__finderPatternsTransformed[1][1][0] + self.__finderPatternsTransformed[1][2][0]) / 2
-        midCornerPointY = (self.__finderPatternsTransformed[2][1][0] + self.__finderPatternsTransformed[2][2][0]) / 2
-
-        vectorX = midCornerPointX - midCornerPoint
-        vectorY = midCornerPointY - midCornerPoint
-
-        cornerToXLen = np.linalg.norm(vectorX)
-        cornerToYLen = np.linalg.norm(vectorY)
-        normX = vectorX / cornerToXLen
-        normY = vectorY / cornerToYLen
-        
-        xMidPoints = np.empty((0,2), int)
-        yMidPoints = np.empty((0,2), int)
-
-        tmpColor = 255
-        tmpStart = None
-        tmpPrev = None
-        for i in range(np.ceil(cornerToXLen).astype(int)):
-            point = np.rint(midCornerPoint + normX * i).astype(int)
-            color = extractedQrCode[point[1],point[0]]
-            if color == tmpColor:
-                tmpPrev = point
-                continue
-            if tmpStart is not None:
-                colMidPoint = np.rint((tmpPrev + tmpStart) / 2).astype(int)
-                xMidPoints = np.append(xMidPoints, [colMidPoint], axis=0)
-            tmpColor = color
-            tmpStart = point
-
-        tmpStart = None
-        for i in range(np.ceil(cornerToYLen).astype(int)):
-            point = np.rint(midCornerPoint + normY * i).astype(int)
-            color = extractedQrCode[point[1],point[0]]
-            if color == tmpColor:
-                tmpPrev = point
-                continue
-            if tmpStart is not None:
-                colMidPoint = np.rint((tmpPrev + tmpStart) / 2).astype(int)
-                yMidPoints = np.append(yMidPoints, [colMidPoint], axis=0)
-            tmpColor = color
-            tmpStart = point
-
-        colcount = (len(yMidPoints) if len(yMidPoints) > len(xMidPoints) else len(xMidPoints)) + 14
         result = np.zeros((colcount, colcount), dtype=np.uint8)
 
         if sobelMaskRowCount != sobelMaskColCount or sobelMaskColCount != colcount:
@@ -293,6 +251,55 @@ class QrCode(object):
         if not any(result):
             raise Exception("Unable to decode QR code.")
         return result[0].data
+
+    def __countDataDimensions(self, image, finderPatterns):
+        midCornerPoint = (finderPatterns[0][1][0] + finderPatterns[0][2][0]) / 2
+        midCornerPointX = (finderPatterns[1][1][0] + finderPatterns[1][2][0]) / 2
+        midCornerPointY = (finderPatterns[2][1][0] + finderPatterns[2][2][0]) / 2
+
+        vectorX = midCornerPointX - midCornerPoint
+        vectorY = midCornerPointY - midCornerPoint
+
+        cornerToXLen = np.linalg.norm(vectorX)
+        cornerToYLen = np.linalg.norm(vectorY)
+        normX = vectorX / cornerToXLen
+        normY = vectorY / cornerToYLen
+        
+        xMidPoints = np.empty((0,2), int)
+        yMidPoints = np.empty((0,2), int)
+
+        tmpColor = 255
+        tmpStart = None
+        tmpPrev = None
+        for i in range(np.ceil(cornerToXLen).astype(int)):
+            point = np.rint(midCornerPoint + normX * i).astype(int)
+            color = image[point[1],point[0]]
+            if color == tmpColor:
+                tmpPrev = point
+                continue
+            if tmpStart is not None:
+                colMidPoint = np.rint((tmpPrev + tmpStart) / 2).astype(int)
+                xMidPoints = np.append(xMidPoints, [colMidPoint], axis=0)
+            tmpColor = color
+            tmpStart = point
+
+        tmpStart = None
+        for i in range(np.ceil(cornerToYLen).astype(int)):
+            point = np.rint(midCornerPoint + normY * i).astype(int)
+            color = image[point[1],point[0]]
+            if color == tmpColor:
+                tmpPrev = point
+                continue
+            if tmpStart is not None:
+                colMidPoint = np.rint((tmpPrev + tmpStart) / 2).astype(int)
+                yMidPoints = np.append(yMidPoints, [colMidPoint], axis=0)
+            tmpColor = color
+            tmpStart = point
+
+        colcount = (len(yMidPoints) if len(yMidPoints) > len(xMidPoints) else len(xMidPoints)) + 14
+        return colcount, xMidPoints, yMidPoints, midCornerPointX, midCornerPointY, midCornerPoint
+
+
     def __organiseFindingPatterns(self):
         # After this method the self.__finderPatterns will contain data in the following order
 
@@ -426,6 +433,9 @@ class QrCode(object):
         return np.rint(np.array([x, y])).astype(int)
 
     def __calucalteFourthCorner(self, scanningRange = 5, offsetX = 0, offserY = 0):
+
+        colcount, _, _, _, _, _ = self.__countDataDimensions(self.__preprocessedImage, self.__finderPatterns)
+
         fourthCorner = self.__precalucalteFourthCorner()
 
         fourthCorner[0] += offsetX
@@ -439,7 +449,7 @@ class QrCode(object):
         rangeX = range(fourthCorner[0]-scanningRange, fourthCorner[0]+scanningRange+1)
         rangeY = range(fourthCorner[1]-scanningRange, fourthCorner[1]+scanningRange+1)
 
-        sobelScoresX = [self.__calculateSobelScore(self.__fourPointTransform(self.__preprocessedImage, np.float32([self.__finderPatterns[0][2][1],self.__finderPatterns[1][2][1],[x, fourthCorner[1]],self.__finderPatterns[2][2][1]]))[0]) for x in rangeX]
+        sobelScoresX = [self.__calculateSobelScore(colcount, self.__fourPointTransform(self.__preprocessedImage, np.float32([self.__finderPatterns[0][2][1],self.__finderPatterns[1][2][1],[x, fourthCorner[1]],self.__finderPatterns[2][2][1]]))[0]) for x in rangeX]
         maxSobelScoreX = max(range(len(sobelScoresX)), key=sobelScoresX.__getitem__)
         fourthCornerCorrectedX = rangeX.__getitem__(maxSobelScoreX)
 
@@ -451,11 +461,11 @@ class QrCode(object):
                 fourthCornerCorrectedX = rangeX.__getitem__(maxSobelScoreX)
                 prevSobelScoresX = sobelScoresX[maxSobelScoreX]
                 rangeX = range(fourthCorner[0] + 1 + (scanningRange * ix) * direction, fourthCorner[0] + 1 + (scanningRange * (ix + 1)) * direction + 1, direction)
-                sobelScoresX = [self.__calculateSobelScore(self.__fourPointTransform(self.__preprocessedImage, np.float32([self.__finderPatterns[0][2][1],self.__finderPatterns[1][2][1],[x, fourthCorner[1]],self.__finderPatterns[2][2][1]]))[0]) for x in rangeX]
+                sobelScoresX = [self.__calculateSobelScore(colcount, self.__fourPointTransform(self.__preprocessedImage, np.float32([self.__finderPatterns[0][2][1],self.__finderPatterns[1][2][1],[x, fourthCorner[1]],self.__finderPatterns[2][2][1]]))[0]) for x in rangeX]
                 maxSobelScoreX = max(range(len(sobelScoresX)), key=sobelScoresX.__getitem__)
                 ix += 1
 
-        sobelScoresY = [self.__calculateSobelScore(self.__fourPointTransform(self.__preprocessedImage, np.float32([self.__finderPatterns[0][2][1],self.__finderPatterns[1][2][1],[fourthCorner[0] + (maxSobelScoreX - scanningRange), y],self.__finderPatterns[2][2][1]]))[0]) for y in rangeY]
+        sobelScoresY = [self.__calculateSobelScore(colcount, self.__fourPointTransform(self.__preprocessedImage, np.float32([self.__finderPatterns[0][2][1],self.__finderPatterns[1][2][1],[fourthCorner[0] + (maxSobelScoreX - scanningRange), y],self.__finderPatterns[2][2][1]]))[0]) for y in rangeY]
         maxSobelScoreY = max(range(len(sobelScoresY)), key=sobelScoresY.__getitem__)
         fourthCornerCorrectedY = rangeY.__getitem__(maxSobelScoreY)
 
@@ -467,7 +477,7 @@ class QrCode(object):
                 fourthCornerCorrectedY = rangeY.__getitem__(maxSobelScoreY)
                 prevSobelScoresY = sobelScoresY[maxSobelScoreY]
                 rangeY = range(fourthCorner[1] + 1 + (scanningRange * iy) * direction, fourthCorner[1] + 1 + (scanningRange * (iy + 1)) * direction + 1, direction)
-                sobelScoresY = [self.__calculateSobelScore(self.__fourPointTransform(self.__preprocessedImage, np.float32([self.__finderPatterns[0][2][1],self.__finderPatterns[1][2][1],[fourthCorner[0] + (maxSobelScoreY - scanningRange), y],self.__finderPatterns[2][2][1]]))[0]) for y in rangeY]
+                sobelScoresY = [self.__calculateSobelScore(colcount, self.__fourPointTransform(self.__preprocessedImage, np.float32([self.__finderPatterns[0][2][1],self.__finderPatterns[1][2][1],[fourthCorner[0] + (maxSobelScoreY - scanningRange), y],self.__finderPatterns[2][2][1]]))[0]) for y in rangeY]
                 maxSobelScoreY = max(range(len(sobelScoresY)), key=sobelScoresY.__getitem__)
                 iy += 1
 
@@ -512,7 +522,7 @@ class QrCode(object):
         return np.rint(np.array([px, py])).astype(int)
 
 
-    def __calculateSobelScore(self, inputImage, debugOutput = None):
+    def __calculateSobelScore(self, colcount, inputImage, debugOutput = None):
         
         filler = np.full(inputImage.shape[1], 255)
         inputImage = cv2.GaussianBlur(inputImage, (3, 3), 0)
@@ -530,9 +540,21 @@ class QrCode(object):
                 inputImageVerticalSobel[:,i] = filler
         zerosY = np.count_nonzero(cols == False)
     
+        colCountY = 0
+        countState = True
+        colSizesY = (np.where(cols[:-1] != cols[1:])[0] + 1) - np.insert((np.where(cols[:-1] != cols[1:])[0] + 1)[:-1], 0, 0)
+        colCountY = colSizesY[::2].size
+        #for i, state in enumerate(cols):
+        #    if state:
+        #        countState = True
+        #    elif countState:
+        #        colCountY += 1
+        #        countState = False
+
         if debugOutput is not None:
             tmpColored = cv2.cvtColor(inputImageVerticalSobel, cv2.COLOR_GRAY2BGR)
-            tmpColored = cv2.putText(tmpColored, str(zerosY), (5, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2, 2)
+            tmpColored = cv2.putText(tmpColored, str((colCountY / colcount) + (inputImage.shape[1] / colcount) / np.std(colSizesY)), (5, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2, 2)
+            tmpColored = cv2.putText(tmpColored, str(np.std(colSizesY)), (5, 60), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2, 2)
             debugOutput.append(np.copy(tmpColored))
 
         inputImageHorizontalSobel = cv2.Sobel(inputImage, cv2.CV_16S, 0, 1, ksize=1)
@@ -548,12 +570,33 @@ class QrCode(object):
                 inputImageHorizontalSobel[i,:] = filler
         zerosX = np.count_nonzero(rows == False)
     
+        rowCountX = 0
+        countState = True
+        rowSizesX = (np.where(rows[:-1] != rows[1:])[0] + 1) - np.insert((np.where(rows[:-1] != rows[1:])[0] + 1)[:-1], 0, 0)
+        rowCountX = rowSizesX[::2].size
+        #for i, state in enumerate(rows):
+        #    if state:
+        #        countState = True
+        #    elif countState:
+        #        rowCountX += 1
+        #        countState = False
+                
+
         if debugOutput is not None:
             tmpColored = cv2.cvtColor(inputImageHorizontalSobel, cv2.COLOR_GRAY2BGR)
-            tmpColored = cv2.putText(tmpColored, str(zerosX), (5, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2, 2)
+            tmpColored = cv2.putText(tmpColored, str((rowCountX / colcount) + (inputImage.shape[0] / colcount) / np.std(rowSizesX)), (5, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2, 2)
+            tmpColored = cv2.putText(tmpColored, str(np.std(rowSizesX)), (5, 60), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2, 2)
             debugOutput.append(np.copy(tmpColored))
 
-        return zerosX + zerosY
+        colCountScore = 0
+        if rowCountX != colcount:
+            colCountScore -= 100000
+        if colCountY != colcount:
+            colCountScore -= 100000
+
+        #return (zerosX - zerosX * 0.3 * np.std(rowSizesX)) + (zerosY - zerosY * 0.3 * np.std(colSizesY)) + colCountScore
+        #return (1000 - 1000 * np.std(rowSizesX)) + (1000 - 1000 * np.std(colSizesY)) + colCountScore
+        return (colCountY / colcount + rowCountX / colcount) + (inputImage.shape[0] / colcount) / np.std(rowSizesX) + (inputImage.shape[1] / colcount) / np.std(colSizesY)
 
     def __getSobelMask(self, image):
         fillerX = np.full(image.shape[1], 255)
