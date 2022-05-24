@@ -53,7 +53,7 @@ class Barcode(object):
         underPreprocessImage = np.uint8(underPreprocessImage)
         self.__dealWithProcessingLayers(underPreprocessImage)
 
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (21, 7))
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (self.__morfRectH, self.__morfRectW))
         underPreprocessImage = cv2.morphologyEx(underPreprocessImage, cv2.MORPH_CLOSE, kernel)
         self.__dealWithProcessingLayers(underPreprocessImage)
 
@@ -61,10 +61,6 @@ class Barcode(object):
         self.__dealWithProcessingLayers(underPreprocessImage)
 
         underPreprocessImage = cv2.dilate(underPreprocessImage, None, iterations = self.__dilationIterations)
-        self.__dealWithProcessingLayers(underPreprocessImage)
-
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (self.__morfRectH, self.__morfRectW))
-        underPreprocessImage = cv2.morphologyEx(underPreprocessImage, cv2.MORPH_CLOSE, kernel)
         self.__dealWithProcessingLayers(underPreprocessImage)
 
         self.__preprocessedImage = underPreprocessImage

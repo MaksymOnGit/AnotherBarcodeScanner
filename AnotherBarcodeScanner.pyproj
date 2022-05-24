@@ -12,7 +12,7 @@
     <Name>AnotherBarcodeScanner</Name>
     <RootNamespace>AnotherBarcodeScanner</RootNamespace>
     <LaunchProvider>Standard Python launcher</LaunchProvider>
-    <CommandLineArguments>debug qr</CommandLineArguments>
+    <CommandLineArguments>debug bar</CommandLineArguments>
     <EnableNativeCodeDebugging>False</EnableNativeCodeDebugging>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">

@@ -183,7 +183,7 @@ def calculate(x):
     I_original = cv2.imread(images[image])
 
     from Barcode import Barcode
-    barcode = Barcode(I_original, scalePercent=scale, rotationInDegrees=angle, blurKernelSize=pre_blur_ksize, erosionIterations=erosionIterations, dilationIterations=dilationIterations, makeProcessingLayers=True)
+    barcode = Barcode(I_original, scalePercent=scale, rotationInDegrees=angle, blurKernelSize=pre_blur_ksize, erosionIterations=erosionIterations, dilationIterations=dilationIterations, morfRectH=morfRectH, morfRectW=morfRectW, makeProcessingLayers=True)
     barcodeVal = barcode.readBarcode()
     layers = barcode.processingLayers
 
